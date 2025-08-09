@@ -240,23 +240,42 @@ class ClaudeAutoCommit {
             maxTurns: 1,
           },
         })) {
+          if (this.verbose) {
+            console.log('🔍 Received message type:', message.type);
+            if (message.type === 'assistant' && message.message && message.message.content) {
+              console.log('   Assistant content:', JSON.stringify(message.message.content));
+            }
+          }
           messages.push(message);
         }
         
         clearTimeout(timeoutId);
         
-        // 結果を取得
-        const resultMessage = messages.find(msg => msg.type === 'result');
-        if (resultMessage && resultMessage.result) {
-          return resultMessage.result.trim();
+        // First try to get from assistant messages (most reliable)
+        const assistantMessages = messages.filter(msg => msg.type === 'assistant');
+        for (const assistantMessage of assistantMessages) {
+          if (assistantMessage && assistantMessage.message && assistantMessage.message.content) {
+            const content = assistantMessage.message.content;
+            if (Array.isArray(content) && content[0] && content[0].text) {
+              const text = content[0].text.trim();
+              // Skip meta-responses
+              if (!text.includes("I'll analyze") && !text.includes("I will analyze")) {
+                if (this.verbose) {
+                  console.log('📌 Found commit message from assistant:', text);
+                }
+                return text;
+              }
+            }
+          }
         }
         
-        // assistantメッセージからも試行
-        const assistantMessage = messages.find(msg => msg.type === 'assistant');
-        if (assistantMessage && assistantMessage.message && assistantMessage.message.content) {
-          const content = assistantMessage.message.content;
-          if (Array.isArray(content) && content[0] && content[0].text) {
-            return content[0].text.trim();
+        // Fall back to result message
+        const resultMessage = messages.find(msg => msg.type === 'result');
+        if (resultMessage && resultMessage.result) {
+          const result = resultMessage.result.trim();
+          // Skip meta-responses
+          if (!result.includes("I'll analyze") && !result.includes("I will analyze")) {
+            return result;
           }
         }
         
@@ -301,7 +320,7 @@ class ClaudeAutoCommit {
       prompt += ` コミットメッセージのみを出力してください。説明や追加のテキストは不要です。`;
       
     } else {
-      prompt = `Generate an appropriate git commit message based on the following changes.`;
+      prompt = `DO NOT use any tools. DO NOT run any commands. Based ONLY on the git diff provided below, generate an appropriate git commit message.`;
       
       if (this.conventionalCommit) {
         prompt += ` Use Conventional Commits format (e.g., feat:, fix:, docs:, style:, refactor:, test:, chore:).`;
@@ -314,7 +333,7 @@ class ClaudeAutoCommit {
         prompt += ` Include appropriate emojis.`;
       }
       
-      prompt += ` Output only the commit message. No explanation or additional text needed.`;
+      prompt += ` Output ONLY the commit message text, nothing else. Do not explain or use any tools.`;
     }
     
     prompt += `\n\nChanges:\n${changes}`;

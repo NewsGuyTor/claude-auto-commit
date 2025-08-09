@@ -566,10 +566,21 @@ Configuration:
   return options;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Check if this script is being run directly
+import { fileURLToPath } from 'url';
+import { pathToFileURL } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const scriptPath = process.argv[1];
+
+// Compare the resolved paths
+if (__filename === scriptPath || pathToFileURL(scriptPath).href === import.meta.url) {
   const options = parseArgs();
   const autoCommit = new ClaudeAutoCommit(options);
-  autoCommit.run();
+  autoCommit.run().catch(error => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
 }
 
 export default ClaudeAutoCommit;
